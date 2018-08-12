@@ -1,0 +1,279 @@
+---
+title: "SI - Part 2: Inferential Data Analysis"
+author: "Pascal P"
+date: "11 August 2018"
+output: 
+  pdf_document:
+#    toc: true
+#    toc_depth: 3
+    number_sections: true
+    df_print: kable
+    highlight: tango
+    fig_width: 5
+    fig_height: 2.5
+    fig_caption: true
+fontsize: 10pt
+geometry: margin=0.6in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, cache=TRUE, warning=FALSE, message=FALSE, fig.path='figure/', fig.align='center')
+```
+
+# Overview
+The aim of this project is to do an analysis on the Tooth Growth data, part of the `R datasets` package.  
+In the following we will load the data, present some basic summary, then define some plots which will allow us to make some observations. We will proceed with some hypothesis tests, stating our assumptions, to compare tooth growth versus supplements and doses. Finally we will state our conclusions.    
+
+# Exploratory Data 
+
+## Load the data and basic summary
+According to `help page`, the `ToothGrowth` data-set is a data frame of 60 observations on 3 variables:  
+
+- `len`:  numeric, tooth length (a measure for the tooth growth)
+- `supp`: factor, supplement type (VC [ascorbic acid, a form of vitamin C] or OJ [Orange Juice]).
+- `dose`: numeric, dose in milligrams/day
+
+
+```{r prep_str, comment='#'}
+str(ToothGrowth)
+```
+
+A basic summary is as follows:  
+```{r prep_sum, comment='#', echo=FALSE}
+# summary table 
+sum_df0 <- aggregate(ToothGrowth$len, 
+                     by=list(ToothGrowth$supp, ToothGrowth$dose), FUN=mean)
+colnames(sum_df0) <- c("supp", "dose", "mean")
+std_dev <- aggregate(ToothGrowth$len, 
+                     by=list(ToothGrowth$supp, ToothGrowth$dose), 
+                     FUN=function(x) { round(sd(x), 3) })$x
+
+knitr::kable(cbind(sum_df0, std_dev), caption='summary per supp and dose')
+```
+
+## Plots and observations
+
+We will start our exploratory data analysis with some basic plots.  
+
+```{r 01_ToothLen_per_supp, echo=FALSE, fig.height=2, fig.width=4}
+library(ggplot2)
+
+ggplot(ToothGrowth, aes(x=supp, y=len, fill=supp)) + 
+  geom_boxplot(outlier.colour="darkred", outlier.size=2) +
+  scale_fill_manual(values=c("lightskyblue3", "slategrey")) +
+  ggtitle("Tooth growth (length) by supplement types") +
+  ylab("tooth length") + xlab("supplement type") +
+  theme(plot.title=element_text(hjust = 0.5, size=7),
+        text=element_text(size=7))
+```
+
+It appears from the plot above that supplement type OJ is more effective for tooth growth than VC.  
+Let see what is the effect of the dose, for this we need to convert the 3 different dose levels into a factor (additional column `dose_f`).  
+
+```{r 02_ToothLen_per_dose_supp, echo=FALSE, fig.width=5, fig.height=2.5}
+ToothGrowth$dose_f <- as.factor(ToothGrowth$dose)
+
+ggplot(ToothGrowth, aes(x=dose_f, y=len, fill=supp)) +
+  geom_boxplot(outlier.colour="darkred", outlier.size=2) +
+  scale_fill_manual(values=c("lightskyblue3", "slategrey")) +
+  ggtitle("Tooth growth (length) by dose for supplement type") +
+  ylab("tooth length") + xlab("dose") +
+  theme(plot.title=element_text(hjust = 0.5, size=7),
+        text=element_text(size=7))
+```
+This  tells us:  
+
+- that as we increase the dose (regardless of the supplement type) we have an increase in the tooth growth and
+- for dose `0.5 mg/day` and `1 mg/day`, OJ appears to be more effective than VC in the increase of tooth growth
+- at `2 mg/day` OJ and VC appears to have similar effects on tooth growth 
+
+# Comparing tooth growth by supplement and dose
+
+First, let me states my assumptions for the rest of this study:  
+
+1. independence of the groups, which means that I will use the `R options paired=FALSE`
+1. unequal variance, and
+1. data is iid (independent, identically distributed) normal.
+
+Now I will test the alternative hypothesis that the mean length (tooth growth, guinea pigs) for OJ and VC differs significantly for dosage less than `2mg/day` (in this instance the null hypothesis is that there is no significant difference).
+
+```{r 01_hyp_test, echo=FALSE}
+# select supplement with dose < 2.0 mg/day
+vc_gp_lt_2mg <- subset(ToothGrowth, supp == 'VC' & dose < 2.0, select=c(1, 3)) 
+oj_gp_lt_2mg <- subset(ToothGrowth, supp == 'OJ' & dose < 2.0, select=c(1, 3))
+
+t00 <- t.test(vc_gp_lt_2mg$len, oj_gp_lt_2mg$len, paired=FALSE, var.equal=FALSE)
+```
+
+```{r 01_hyp_test_sum, comment='#'}
+t00$p.value; t00$conf.int
+```
+
+We can see that the `p-value (= 0.004239)` $< \alpha (= 0.05)$ and therefore reject the null hypothesis (for full details, cf. appendix).  
+
+Next, I will test the alternative hypothesis that the mean length (of the guinea pigs) for OJ and VC differs significantly for dosage at `2mg/day`. In this case the expectation is that we should not reject the null hypothesis (cf. plot and statements in previous part, above).
+
+```{r 02_hyp_test, echo=FALSE}
+vc_gp_2mg <- subset(ToothGrowth, supp == 'VC' & dose >= 2.0, select=c(1, 3)) 
+oj_gp_2mg <- subset(ToothGrowth, supp == 'OJ' & dose >= 2.0, select=c(1, 3)) 
+
+t01 <- t.test(vc_gp_2mg$len, oj_gp_2mg$len, paired=FALSE, var.equal=FALSE)
+```
+
+```{r 02_hyp_test_sum, comment='#'}
+t01$p.value; t01$conf.int
+```
+
+Clearly this time (and as expected), we cannot reject the null hypothesis as `p-value (= 0.9639)` $> \alpha (= 0.05)$. Also note that the confidence interval contains 0.  
+
+Next we will proceed with 3 t-tests (number of ways to compare two given doses among three) for the alternative hypothesis that the mean length (tooth growth, guinea pigs) for different doses differs significantly.  
+
+```{r 03_hyp_tests, echo=FALSE}
+dose_0_5mg <- subset(ToothGrowth, dose == 0.5, len)
+dose_1_0mg <- subset(ToothGrowth, dose == 1.0, len)
+dose_2_0mg <- subset(ToothGrowth, dose == 2.0, len)
+
+t1 <- t.test(dose_0_5mg, dose_1_0mg, paired=FALSE, var.equal=FALSE)
+t2 <- t.test(dose_0_5mg, dose_2_0mg, paired=FALSE, var.equal=FALSE)
+t3 <- t.test(dose_1_0mg, dose_2_0mg, paired=FALSE, var.equal=FALSE)
+lt <- list(t1, t2, t3)
+
+sum_df <- data.frame(
+  'name' = sapply(lt, function(x) { x$data.name}),
+  'p-value'  = sapply(lt, function(x) { x$p.value }),
+  't-stat' = sapply(lt, function(x) { round(x$statistic[[1]], 3) }),
+  'df' = sapply(lt, function(x) { round(x$parameter[[1]], 1) }),
+  'low-conf-int' = sapply(lt, function(x) { round(x$conf.int[1], 3) }),
+  'up-conf-int' = sapply(lt, function(x) { round(x$conf.int[2], 3) }),
+  'mean-x' = sapply(lt, function(x) { x$estimate[1] }),
+  'mean-y' = sapply(lt, function(x) { x$estimate[2] })
+)
+rownames(sum_df) <- NULL
+```
+
+```{r 03_hyp_tests_res,results='asis'}
+knitr::kable(sum_df, caption='t-test summary')
+```
+
+In each case, we found that:
+
+- the `p-value` is less than the given $\alpha (= 0.05)$ and
+- `0` is not in the confidence interval.
+
+This means that we can reject the null-hypothesis and retain the alternative which states that the mean in growth tooth differs significantly with different doses.
+
+# Conclusions    
+
+Based on our exploratory analysis and comparison for tooth growth presented above we can say that:
+
+- for doses less than `2mg/day` the OJ supplement is more effective than VC fore tooth growth (for guinea pigs).
+- at higher dosage (here `2.0mg`) there is no significant difference between the two supplements.
+- increasing dosage (regardless of the supplement type) leads to an apparent increase in tooth growth (*I did not present any evidence beyond a plot for this though*).
+  
+\pagebreak  
+
+
+
+# Appendix 
+
+## Code for basic summary table
+
+```{r A00_prep_sum, comment='#', eval=FALSE}
+# summary table 
+sum_df0 <- aggregate(ToothGrowth$len, 
+                     by=list(ToothGrowth$supp, ToothGrowth$dose), FUN=mean)
+colnames(sum_df0) <- c("supp", "dose", "mean")
+std_dev <- aggregate(ToothGrowth$len, 
+                     by=list(ToothGrowth$supp, ToothGrowth$dose), 
+                     FUN=function(x) { round(sd(x), 3) })$x
+
+knitr::kable(cbind(sum_df0, std_dev), caption='summary per supp and dose')
+```
+
+
+## Code for plots
+
+```{r A01_ToothLen_per_supp, eval=FALSE, comment="#"}
+library(ggplot2)
+
+ggplot(ToothGrowth, aes(x=supp, y=len, fill=supp)) + 
+  geom_boxplot(outlier.colour="darkred", outlier.size=2) +
+  scale_fill_manual(values=c("lightskyblue3", "slategrey")) +
+  ggtitle("Tooth growth (length) by supplement types") +
+  ylab("tooth length") + xlab("supplement type") +
+  theme(plot.title=element_text(hjust = 0.5, size=7),
+        text=element_text(size=7))
+```
+
+```{r A02_ToothLen_per_dose_supp, eval=FALSE, comment="#"}
+# create a new column for holding dose as a factor
+ToothGrowth$dose_f <- as.factor(ToothGrowth$dose)
+
+ggplot(ToothGrowth, aes(x=dose_f, y=len, fill=supp)) +
+  geom_boxplot(outlier.colour="darkred", outlier.size=2) +
+  scale_fill_manual(values=c("lightskyblue3", "slategrey")) +
+  ggtitle("Tooth growth (length) by dose for supplement type") +
+  ylab("tooth length") + xlab("dose") +
+  theme(plot.title=element_text(hjust = 0.5, size=7),
+        text=element_text(size=7))```
+```
+## Code for t-tests
+
+### 
+
+```{r A01_hyp_test, eval=FALSE}
+# select supplement with dose < 2.0 mg/day
+vc_gp_lt_2mg <- subset(ToothGrowth, supp == 'VC' & dose < 2.0, select=c(1, 3)) 
+oj_gp_lt_2mg <- subset(ToothGrowth, supp == 'OJ' & dose < 2.0, select=c(1, 3))
+```
+
+```{r A01_hyp_test_full, comment='#'}
+t.test(vc_gp_lt_2mg$len, oj_gp_lt_2mg$len, paired=FALSE, var.equal=FALSE)
+```
+
+### 
+
+```{r A02_hyp_test, eval=FALSE}
+# select supplement with dose == 2.0 mg/day
+vc_gp_2mg <- subset(ToothGrowth, supp == 'VC' & dose >= 2.0, select=c(1, 3)) 
+oj_gp_2mg <- subset(ToothGrowth, supp == 'OJ' & dose >= 2.0, select=c(1, 3))
+```
+```{r A02_hyp_test_full, comment='#'}
+t.test(vc_gp_2mg$len, oj_gp_2mg$len, paired=FALSE, var.equal=FALSE)
+```
+
+### 
+
+```{r A03_hyp_tests, eval=FALSE}
+# define 3 groups according to doses
+dose_0_5mg <- subset(ToothGrowth, dose == 0.5, len)
+dose_1_0mg <- subset(ToothGrowth, dose == 1.0, len)
+dose_2_0mg <- subset(ToothGrowth, dose == 2.0, len)
+
+# perform t-test for each combination
+t1 <- t.test(dose_0_5mg, dose_1_0mg, paired=FALSE, var.equal=FALSE)
+t2 <- t.test(dose_0_5mg, dose_2_0mg, paired=FALSE, var.equal=FALSE)
+t3 <- t.test(dose_1_0mg, dose_2_0mg, paired=FALSE, var.equal=FALSE)
+lt <- list(t1, t2, t3)
+
+# gather the results
+sum_df <- data.frame(
+  'name' = sapply(lt, function(x) { x$data.name}),
+  'p-value'  = sapply(lt, function(x) { x$p.value }),
+  't-stat' = sapply(lt, function(x) { round(x$statistic[[1]], 3) }),
+  'df' = sapply(lt, function(x) { round(x$parameter[[1]], 1) }),
+  'low-conf-int' = sapply(lt, function(x) { round(x$conf.int[1], 3) }),
+  'up-conf-int' = sapply(lt, function(x) { round(x$conf.int[2], 3) }),
+  'mean-x' = sapply(lt, function(x) { x$estimate[1] }),
+  'mean-y' = sapply(lt, function(x) { x$estimate[2] })
+)
+rownames(sum_df) <- NULL
+
+# show results
+knitr::kable(sum_df, caption='t-test summary')
+```
+
+## References
+
+- Coursera ["Statistical Inference" course](https://www.coursera.org/learn/statistical-inference/home/welcome), and in particular week 3 and 4.
+- R documentation, *ToothGrowth datasets*
